@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Notflix Dev Console & shared catalog user record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "role": { "type": "string", "enum": ["owner", "admin", "publisher", "viewer"] },
+        "roles": { "type": "array", "description": "Multi-role list" },
+        "isOwner": { "type": "boolean" },
+        "isAdmin": { "type": "boolean" },
+        "isPublisher": { "type": "boolean" },
+        "isDistributor": { "type": "boolean" },
+        "publisherStatus": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "suspended", "pending"] },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["uid", "email", "role", "status"]
+    },
+    "ContentItem": {
+      "title": "ContentItem",
+      "description": "Catalog movie or TV show submission in shared movies collection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "contentType": { "type": "string", "enum": ["movie", "tv"] },
+        "genre": { "type": "string" },
+        "releaseYear": { "type": "integer" },
+        "videoUrl": { "type": "string" },
+        "posterUrl": { "type": "string" },
+        "backdropUrl": { "type": "string" },
+        "trailerUrl": { "type": "string" },
+        "rating": { "type": "string" },
+        "runtimeMinutes": { "type": "integer" },
+        "publisherId": { "type": "string" },
+        "publisherName": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "pending", "approved", "rejected", "changes_requested"] },
+        "feedback": { "type": "string" },
+        "reviewedBy": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "contentType", "publisherId", "status"]
+    },
+    "AccessApplication": {
+      "title": "AccessApplication",
+      "description": "Creator or admin access application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "fullName": { "type": "string" },
+        "studioName": { "type": "string" },
+        "requestedRole": { "type": "string", "enum": ["publisher", "admin"] },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "reviewedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "studioName", "requestedRole", "status", "createdAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Content category metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "LiveStream": {
+      "title": "LiveStream",
+      "description": "Scheduled or live broadcast stream",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "streamUrl": { "type": "string" },
+        "scheduleTime": { "type": "string" },
+        "isLive": { "type": "boolean" },
+        "creatorId": { "type": "string" }
+      },
+      "required": ["id", "title", "streamUrl", "creatorId"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable administrative action log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "adminId": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "target": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminId", "action", "target", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "User profiles and authorization metadata"
+    },
+    "/movies/{movieId}": {
+      "schema": { "$ref": "#/entities/ContentItem" },
+      "description": "Shared Notflix catalog and publisher submissions"
+    },
+    "/access_applications/{appId}": {
+      "schema": { "$ref": "#/entities/AccessApplication" },
+      "description": "Dev Console role access requests"
+    },
+    "/categories/{catId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Platform content categories"
+    },
+    "/live_streams/{streamId}": {
+      "schema": { "$ref": "#/entities/LiveStream" },
+      "description": "Live stream schedules"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Append-only administrative audit logs"
+    }
+  }
+}

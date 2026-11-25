@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<resources>
+    <string name="firestore_database_id" translatable="false">ai-studio-android-velora-fa049f50-d743-4c93-8b72-1a2b2b3ed613</string>
+    <string name="recaptcha_site_key" translatable="false">6LdomS0uAAAAAKsgD-toGNydyNuFdAMcb1UrUa3F</string>
+</resources>

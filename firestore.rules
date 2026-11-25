@@ -1,0 +1,310 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny global catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Core Primitives (minimal AST footprint for Firestore CEL) ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function callerDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isOwner() {
+      return isSignedIn() && (
+        request.auth.token.get('isOwner', false) == true ||
+        request.auth.token.get('role', '') == 'owner' ||
+        (callerDoc() != null && callerDoc().data.get('status', 'active') != 'suspended' && (
+          callerDoc().data.get('isOwner', false) == true ||
+          callerDoc().data.get('role', '') in ['owner', 'OWNER', 'Owner']
+        ))
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.get('isOwner', false) == true ||
+        request.auth.token.get('isAdmin', false) == true ||
+        request.auth.token.get('role', '') in ['owner', 'admin'] ||
+        (callerDoc() != null && callerDoc().data.get('status', 'active') != 'suspended' && (
+          callerDoc().data.get('isOwner', false) == true ||
+          callerDoc().data.get('isAdmin', false) == true ||
+          callerDoc().data.get('role', '') in ['owner', 'OWNER', 'Owner', 'admin', 'ADMIN', 'Admin']
+        ))
+      );
+    }
+
+    function isPublisher() {
+      return isSignedIn() && (
+        request.auth.token.get('isOwner', false) == true ||
+        request.auth.token.get('isAdmin', false) == true ||
+        request.auth.token.get('isPublisher', false) == true ||
+        request.auth.token.get('isDistributor', false) == true ||
+        request.auth.token.get('role', '') in ['owner', 'admin', 'publisher', 'distributor', 'creator'] ||
+        (callerDoc() != null && callerDoc().data.get('status', 'active') != 'suspended' && (
+          callerDoc().data.get('isOwner', false) == true ||
+          callerDoc().data.get('isAdmin', false) == true ||
+          callerDoc().data.get('isPublisher', false) == true ||
+          callerDoc().data.get('isDistributor', false) == true ||
+          callerDoc().data.get('publisherStatus', '') in ['approved', 'APPROVED', 'Approved', 'active'] ||
+          callerDoc().data.get('role', '') in ['owner', 'OWNER', 'Owner', 'admin', 'ADMIN', 'Admin', 'publisher', 'PUBLISHER', 'Publisher', 'distributor', 'DISTRIBUTOR', 'creator']
+        ))
+      );
+    }
+
+    function targetHasAdminOrOwner(data) {
+      return data.get('isOwner', false) == true ||
+             data.get('isAdmin', false) == true ||
+             data.get('role', '') in ['owner', 'OWNER', 'Owner', 'admin', 'ADMIN', 'Admin'];
+    }
+
+    // --- Validation Helpers ---
+    function isValidSelfViewerCreate(userId, data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'status', 'createdAt']) &&
+             data.uid == userId &&
+             data.email is string && data.email.size() <= 320 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120)) &&
+             data.role == 'viewer' &&
+             data.status == 'active' &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidProfileSelfUpdate(data, prev) {
+      return data.diff(prev).affectedKeys().hasOnly(['displayName', 'name', 'updatedAt']) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120)) &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 120)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidMovieFields(movieId, data) {
+      return data.keys().hasAll(['title', 'contentType', 'publisherId', 'status', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'title', 'description', 'contentType', 'genre', 'categories',
+               'releaseYear', 'releaseDate', 'videoUrl', 'posterUrl', 'backdropUrl',
+               'trailerUrl', 'rating', 'runtimeMinutes', 'publisherId', 'publisherName',
+               'status', 'feedback', 'seasons', 'reviewedBy', 'reviewedAt',
+               'createdAt', 'updatedAt'
+             ]) &&
+             (!('id' in data) || data.id == movieId) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+             data.contentType in ['movie', 'tv'] &&
+             (!('genre' in data) || (data.genre is string && data.genre.size() <= 100)) &&
+             (!('releaseYear' in data) || (data.releaseYear is int && data.releaseYear >= 1900 && data.releaseYear <= 2100)) &&
+             (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 2000)) &&
+             (!('posterUrl' in data) || (data.posterUrl is string && data.posterUrl.size() <= 2000)) &&
+             (!('backdropUrl' in data) || (data.backdropUrl is string && data.backdropUrl.size() <= 2000)) &&
+             (!('trailerUrl' in data) || (data.trailerUrl is string && data.trailerUrl.size() <= 2000)) &&
+             (!('rating' in data) || (data.rating is string && data.rating.size() <= 20)) &&
+             (!('runtimeMinutes' in data) || (data.runtimeMinutes is int && data.runtimeMinutes >= 0 && data.runtimeMinutes <= 10000)) &&
+             data.publisherId is string && data.publisherId.size() >= 1 && data.publisherId.size() <= 128 &&
+             (!('publisherName' in data) || (data.publisherName is string && data.publisherName.size() <= 120)) &&
+             (!('feedback' in data) || (data.feedback is string && data.feedback.size() <= 1000)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAccessApplicationCreate(appId, data) {
+      return data.keys().hasAll(['uid', 'fullName', 'studioName', 'requestedRole', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'uid', 'email', 'fullName', 'studioName', 'requestedRole', 'reason', 'status', 'createdAt']) &&
+             (!('id' in data) || data.id == appId) &&
+             data.uid == request.auth.uid &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 320)) &&
+             data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+             data.studioName is string && data.studioName.size() >= 1 && data.studioName.size() <= 120 &&
+             data.requestedRole in ['publisher', 'admin'] &&
+             (!('reason' in data) || (data.reason is string && data.reason.size() <= 2000)) &&
+             data.status == 'pending' &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidCategory(catId, data) {
+      return data.keys().hasAll(['name', 'slug']) &&
+             data.keys().hasOnly(['id', 'name', 'slug']) &&
+             (!('id' in data) || data.id == catId) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 80;
+    }
+
+    function isValidLiveStream(streamId, data) {
+      return data.keys().hasAll(['title', 'streamUrl', 'creatorId']) &&
+             data.keys().hasOnly(['id', 'title', 'streamUrl', 'scheduleTime', 'isLive', 'creatorId']) &&
+             (!('id' in data) || data.id == streamId) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.streamUrl is string && data.streamUrl.size() <= 2000 &&
+             (!('scheduleTime' in data) || (data.scheduleTime is string && data.scheduleTime.size() <= 100)) &&
+             (!('isLive' in data) || data.isLive is bool) &&
+             data.creatorId is string && data.creatorId.size() >= 1 && data.creatorId.size() <= 128;
+    }
+
+    function isValidAuditLog(logId, data) {
+      return data.keys().hasAll(['adminId', 'action', 'target', 'timestamp']) &&
+             data.keys().hasOnly(['id', 'adminId', 'adminEmail', 'action', 'target', 'timestamp']) &&
+             (!('id' in data) || data.id == logId) &&
+             data.adminId == request.auth.uid &&
+             (!('adminEmail' in data) || (data.adminEmail is string && data.adminEmail.size() <= 320)) &&
+             data.action is string && data.action.size() >= 1 && data.action.size() <= 120 &&
+             data.target is string && data.target.size() >= 1 && data.target.size() <= 200 &&
+             data.timestamp is timestamp && data.timestamp <= request.time;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Users & Roles:
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn() && isValidId(userId) && (
+        (request.auth.uid == userId && isValidSelfViewerCreate(userId, incoming())) ||
+        (incoming().uid == userId && incoming().get('role', '') != 'owner' && incoming().get('isOwner', false) == false && isOwner())
+      );
+
+      allow update: if isSignedIn() && isValidId(userId) && (
+        // Self profile update only (no role/privilege/status modification)
+        (request.auth.uid == userId && isValidProfileSelfUpdate(incoming(), existing())) ||
+        // Non-self updates require Owner or (for non-Admin targets) Admin
+        (request.auth.uid != userId &&
+          existing().get('isOwner', false) == false &&
+          !(existing().get('role', '') in ['owner', 'OWNER', 'Owner']) &&
+          incoming().get('isOwner', false) == false &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'role', 'roles', 'isAdmin', 'isPublisher', 'isDistributor', 'publisherStatus', 'status', 'updatedAt'
+          ]) &&
+          incoming().get('status', 'active') in ['active', 'suspended', 'pending'] && (
+            // Owner can appoint/remove Admins and Publishers
+            (incoming().get('role', 'viewer') in ['admin', 'publisher', 'viewer'] && isOwner()) ||
+            // Non-owner Admin can only manage Viewers/Publishers and NEVER touch Admin/Owner roles
+            (incoming().get('role', 'viewer') in ['publisher', 'viewer'] &&
+              !targetHasAdminOrOwner(existing()) &&
+              !targetHasAdminOrOwner(incoming()) &&
+              isAdmin())
+          ))
+      );
+
+      allow delete: if false;
+    }
+
+    // 2. Access Applications:
+    match /access_applications/{appId} {
+      allow get: if isSignedIn() && isValidId(appId) && (existing().uid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(appId) && isValidAccessApplicationCreate(appId, incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(appId) &&
+                       incoming().uid == existing().uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedBy', 'updatedAt']) &&
+                       incoming().status in ['approved', 'rejected'] &&
+                       incoming().get('reviewedBy', request.auth.uid) == request.auth.uid &&
+                       (!('updatedAt' in incoming()) || (incoming().updatedAt is timestamp && incoming().updatedAt <= request.time)) &&
+                       isAdmin() &&
+                       (existing().get('requestedRole', 'publisher') != 'admin' || incoming().status == 'rejected' || isOwner());
+
+      allow delete: if false;
+    }
+
+    // 3. Shared Catalog & Publisher Submissions (/movies):
+    match /movies/{movieId} {
+      allow get: if isSignedIn() && isValidId(movieId) && (
+        existing().get('status', '') == 'approved' ||
+        (existing().get('publisherId', '') == request.auth.uid && isPublisher()) ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        (resource.data.publisherId == request.auth.uid && isPublisher()) ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() &&
+                       isValidId(movieId) &&
+                       incoming().publisherId == request.auth.uid &&
+                       incoming().status in ['draft', 'pending'] &&
+                       ('createdAt' in incoming()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidMovieFields(movieId, incoming()) &&
+                       isPublisher();
+
+      allow update: if isSignedIn() && isValidId(movieId) && (
+        // Action 1: Submission owner editing their own editable item (cannot self-approve)
+        (existing().get('publisherId', '') == request.auth.uid &&
+          existing().status in ['draft', 'rejected', 'changes_requested', 'pending'] &&
+          incoming().publisherId == existing().publisherId &&
+          (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+          incoming().status in ['draft', 'pending'] &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'id', 'title', 'description', 'contentType', 'genre', 'categories',
+            'releaseYear', 'releaseDate', 'videoUrl', 'posterUrl', 'backdropUrl',
+            'trailerUrl', 'rating', 'runtimeMinutes', 'publisherName', 'status',
+            'feedback', 'seasons', 'updatedAt'
+          ]) &&
+          isValidMovieFields(movieId, incoming()) &&
+          isPublisher()) ||
+        // Action 2: Admin / Owner reviewing ANOTHER user's submission (NO SELF-APPROVAL)
+        (existing().get('publisherId', '') != request.auth.uid &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'feedback', 'reviewedBy', 'reviewedAt', 'updatedAt']) &&
+          incoming().status in ['approved', 'rejected', 'changes_requested', 'pending'] &&
+          incoming().get('feedback', '') is string &&
+          incoming().get('feedback', '').size() <= 1000 &&
+          incoming().get('reviewedBy', request.auth.uid) == request.auth.uid &&
+          (!('reviewedAt' in incoming()) || (incoming().reviewedAt is timestamp && incoming().reviewedAt <= request.time)) &&
+          incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+          (!('publisherId' in existing()) || incoming().publisherId == existing().publisherId) &&
+          (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+          isAdmin())
+      );
+
+      allow delete: if isSignedIn() && isValidId(movieId) && (
+        (existing().get('publisherId', '') == request.auth.uid && existing().status == 'draft' && isPublisher()) ||
+        isOwner()
+      );
+    }
+
+    // 4. Categories:
+    match /categories/{catId} {
+      allow get, list: if isPublisher();
+      allow create, update: if isSignedIn() && isValidId(catId) && isValidCategory(catId, incoming()) && isAdmin();
+      allow delete: if isSignedIn() && isValidId(catId) && isOwner();
+    }
+
+    // 5. Live Streams:
+    match /live_streams/{streamId} {
+      allow get: if isSignedIn() && isValidId(streamId) && ((existing().creatorId == request.auth.uid && isPublisher()) || isAdmin());
+      allow list: if isSignedIn() && ((resource.data.creatorId == request.auth.uid && isPublisher()) || isAdmin());
+      allow create: if isSignedIn() && isValidId(streamId) && incoming().creatorId == request.auth.uid && isValidLiveStream(streamId, incoming()) && isPublisher();
+      allow update: if isSignedIn() && isValidId(streamId) &&
+                       incoming().creatorId == existing().creatorId &&
+                       isValidLiveStream(streamId, incoming()) &&
+                       ((existing().creatorId == request.auth.uid && isPublisher()) || isAdmin());
+      allow delete: if isSignedIn() && isValidId(streamId) && isOwner();
+    }
+
+    // 6. Audit Logs (append-only, immutable):
+    match /audit_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(logId, incoming()) && isPublisher();
+      allow update, delete: if false;
+    }
+  }
+}

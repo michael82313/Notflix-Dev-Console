@@ -1,0 +1,23 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-android-velora-fa049f50-d743-4c93-8b72-1a2b2b3ed613",
+      "rules": "firestore.rules"
+    }
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default"
+    }
+  ],
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8085
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

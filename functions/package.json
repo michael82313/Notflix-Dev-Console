@@ -1,0 +1,16 @@
+{
+  "name": "notflix-dev-console-functions",
+  "version": "1.0.0",
+  "description": "Trusted server-side Cloud Functions for Notflix Dev Console RBAC, content review, and access applications.",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "test": "node --test test/functions.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.1.0"
+  }
+}
